@@ -1,0 +1,1 @@
+# AI-Driven Agri-Civic Intelligence Platform
