@@ -4,18 +4,31 @@ ChromaDB integration for vector database operations.
 
 import logging
 from typing import List, Dict, Any, Optional
+import os
+
+# Handle NumPy compatibility issue with ChromaDB
+import numpy as np
+
+if not hasattr(np, "float_"):
+    np.float_ = np.float64
+if not hasattr(np, "int_"):
+    np.int_ = np.int64
+if not hasattr(np, "uint"):
+    np.uint = np.uint64
+
 import chromadb
 from chromadb.config import Settings
 from chromadb.utils import embedding_functions
 
 from app.config import get_settings
 from app.core.logging import get_logger
+from app.services.vector_db_factory import VectorDBInterface
 
 settings = get_settings()
 logger = get_logger(__name__)
 
 
-class ChromaDBService:
+class ChromaDBService(VectorDBInterface):
     """Service for managing ChromaDB operations."""
 
     def __init__(self):
@@ -27,10 +40,14 @@ class ChromaDBService:
     def _initialize_client(self):
         """Initialize ChromaDB client with appropriate settings."""
         try:
+            # Ensure data directory exists
+            data_dir = "./data/chroma_db"
+            os.makedirs(data_dir, exist_ok=True)
+
             # For development: use persistent local storage
             if settings.environment == "development":
                 self.client = chromadb.PersistentClient(
-                    path="./data/chroma_db",
+                    path=data_dir,
                     settings=Settings(anonymized_telemetry=False, allow_reset=True),
                 )
             else:
@@ -41,10 +58,31 @@ class ChromaDBService:
                     settings=Settings(anonymized_telemetry=False),
                 )
 
-            # Initialize embedding function
-            self.embedding_function = embedding_functions.OpenAIEmbeddingFunction(
-                api_key=settings.openai_api_key, model_name="text-embedding-ada-002"
-            )
+            # Initialize embedding function with error handling
+            if (
+                not settings.openai_api_key
+                or settings.openai_api_key == "your_openai_api_key_here"
+            ):
+                logger.warning("OpenAI API key not provided, using default embeddings")
+                # Use default sentence transformer embeddings as fallback
+                self.embedding_function = embedding_functions.DefaultEmbeddingFunction()
+            else:
+                try:
+                    self.embedding_function = (
+                        embedding_functions.OpenAIEmbeddingFunction(
+                            api_key=settings.openai_api_key,
+                            model_name="text-embedding-ada-002",
+                        )
+                    )
+                    # Test the embedding function with a simple call
+                    logger.info("OpenAI embeddings initialized successfully")
+                except Exception as e:
+                    logger.warning(
+                        f"OpenAI embeddings failed, falling back to default: {e}"
+                    )
+                    self.embedding_function = (
+                        embedding_functions.DefaultEmbeddingFunction()
+                    )
 
             logger.info("ChromaDB client initialized successfully")
 
@@ -167,6 +205,49 @@ class ChromaDBService:
         except Exception as e:
             logger.error(f"Failed to reset collection '{collection_name}': {e}")
             raise
+
+    def health_check(self) -> Dict[str, Any]:
+        """Perform health check on the vector database."""
+        try:
+            # Test basic client connectivity
+            collections = self.client.list_collections()
+
+            # Test embedding function
+            test_embedding = self.embedding_function(["test"])
+
+            return {
+                "status": "healthy",
+                "client_connected": True,
+                "collections_count": len(collections),
+                "embedding_function_working": len(test_embedding) > 0,
+                "message": "Vector database is operational",
+            }
+        except Exception as e:
+            logger.error(f"Vector database health check failed: {e}")
+            return {
+                "status": "unhealthy",
+                "client_connected": False,
+                "error": str(e),
+                "message": "Vector database is not operational",
+            }
+
+    def list_all_collections(self) -> List[str]:
+        """List all available collections."""
+        try:
+            collections = self.client.list_collections()
+            return [col.name for col in collections]
+        except Exception as e:
+            logger.error(f"Failed to list collections: {e}")
+            return []
+
+    def get_embedding_dimension(self) -> int:
+        """Get the dimension of embeddings used."""
+        try:
+            test_embedding = self.embedding_function(["test"])
+            return len(test_embedding[0]) if test_embedding else 0
+        except Exception as e:
+            logger.error(f"Failed to get embedding dimension: {e}")
+            return 0
 
 
 # Global instance

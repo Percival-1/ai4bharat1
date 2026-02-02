@@ -178,6 +178,11 @@ async def general_exception_handler(request: Request, exc: Exception):
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(ivr.router, prefix="/api/v1/ivr", tags=["ivr"])
 
+# Import and include vector database router
+from app.api import vector_db
+
+app.include_router(vector_db.router, prefix="/api/v1", tags=["vector-db"])
+
 
 # Root endpoint
 @app.get("/", tags=["root"])

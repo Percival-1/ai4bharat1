@@ -48,12 +48,31 @@ class Settings(BaseSettings):
     google_maps_api_key: str = Field(default="", description="Google Maps API key")
     openweather_api_key: str = Field(default="", description="OpenWeatherMap API key")
 
-    # Vector Database settings (ChromaDB)
+    # Vector Database settings
+    vector_db_type: str = Field(
+        default="chromadb",
+        description="Vector database type (chromadb, pinecone, weaviate)",
+    )
+
+    # ChromaDB settings
     chroma_host: str = Field(default="localhost", description="ChromaDB host")
     chroma_port: int = Field(default=8000, description="ChromaDB port")
     chroma_persist_directory: str = Field(
         default="./data/chroma_db", description="ChromaDB persistence directory"
     )
+
+    # Pinecone settings (alternative)
+    pinecone_api_key: str = Field(default="", description="Pinecone API key")
+    pinecone_environment: str = Field(default="", description="Pinecone environment")
+    pinecone_index_name: str = Field(
+        default="agri-platform", description="Pinecone index name"
+    )
+
+    # Weaviate settings (alternative)
+    weaviate_url: str = Field(
+        default="http://localhost:8080", description="Weaviate URL"
+    )
+    weaviate_api_key: str = Field(default="", description="Weaviate API key")
 
     twilio_account_sid: str = Field(default="", description="Twilio Account SID")
     twilio_auth_token: str = Field(default="", description="Twilio Auth Token")
@@ -73,7 +92,7 @@ class Settings(BaseSettings):
     max_response_time_seconds: int = Field(
         default=3, description="Maximum response time in seconds"
     )
-    
+
     default_language: str = Field(default="en", description="Default language")
     supported_languages: List[str] = Field(
         default=["en", "hi", "bn", "te", "ta", "mr", "gu", "kn", "ml", "or"],
