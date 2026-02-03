@@ -183,6 +183,21 @@ from app.api import vector_db
 
 app.include_router(vector_db.router, prefix="/api/v1", tags=["vector-db"])
 
+# Import and include RAG router
+from app.api import rag
+
+app.include_router(rag.router, prefix="/api/v1", tags=["rag"])
+
+# Import and include LLM router
+from app.api import llm
+
+app.include_router(llm.router, prefix="/api/v1", tags=["llm"])
+
+# Import and include Translation router
+from app.api import translation
+
+app.include_router(translation.router, prefix="/api/v1", tags=["translation"])
+
 
 # Root endpoint
 @app.get("/", tags=["root"])

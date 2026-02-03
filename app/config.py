@@ -41,8 +41,33 @@ class Settings(BaseSettings):
 
     # External API settings
     openai_api_key: str = Field(default="", description="OpenAI API key")
+    anthropic_api_key: str = Field(default="", description="Anthropic API key")
     google_translate_api_key: str = Field(
         default="", description="Google Translate API key"
+    )
+
+    # LLM Configuration
+    primary_llm_provider: str = Field(
+        default="openai", description="Primary LLM provider (openai, anthropic)"
+    )
+    fallback_llm_provider: str = Field(
+        default="anthropic", description="Fallback LLM provider"
+    )
+    llm_model: str = Field(default="gpt-3.5-turbo", description="Default LLM model")
+    llm_max_tokens: int = Field(
+        default=1000, description="Maximum tokens for LLM responses"
+    )
+    llm_temperature: float = Field(
+        default=0.7, description="LLM temperature for response generation"
+    )
+    llm_timeout_seconds: int = Field(
+        default=30, description="LLM API timeout in seconds"
+    )
+    llm_max_retries: int = Field(
+        default=3, description="Maximum retry attempts for LLM API calls"
+    )
+    llm_retry_delay: float = Field(
+        default=1.0, description="Initial retry delay in seconds"
     )
 
     google_maps_api_key: str = Field(default="", description="Google Maps API key")

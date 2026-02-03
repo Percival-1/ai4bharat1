@@ -5,7 +5,7 @@ IVR (Interactive Voice Response) service using Twilio for the AI-Driven Agri-Civ
 import logging
 from typing import Dict, Any, Optional
 from twilio.rest import Client
-from twilio.twiml import VoiceResponse
+from twilio.twiml.voice_response import VoiceResponse
 from twilio.base.exceptions import TwilioException
 
 from app.config import get_settings
