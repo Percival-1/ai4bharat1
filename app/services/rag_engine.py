@@ -10,6 +10,7 @@ import re
 from datetime import datetime
 
 from app.services.embedding_service import DocumentEmbeddingService
+from app.services.llm_service import llm_service, LLMRequest
 from app.services.vector_db_factory import get_vector_db
 from app.config import get_settings
 from app.core.logging import get_logger
@@ -109,7 +110,7 @@ class RAGEngine:
             logger.error(f"Failed to retrieve documents: {e}")
             raise
 
-    def generate_grounded_response(
+    async def generate_grounded_response(
         self,
         query: str,
         retrieved_documents: List[Dict[str, Any]],
@@ -136,7 +137,7 @@ class RAGEngine:
             context = self._prepare_context(retrieved_documents)
 
             # Generate response with source grounding
-            response_data = self._generate_response_with_grounding(
+            response_data = await self._generate_response_with_grounding(
                 query=query,
                 context=context,
                 retrieved_documents=retrieved_documents,
@@ -186,7 +187,7 @@ class RAGEngine:
 
         return "".join(context_parts)
 
-    def _generate_response_with_grounding(
+    async def _generate_response_with_grounding(
         self,
         query: str,
         context: str,
@@ -194,11 +195,133 @@ class RAGEngine:
         response_type: str,
         language: str,
     ) -> Dict[str, Any]:
-        """Generate response with proper source grounding."""
+        """Generate response with proper source grounding using LLM."""
 
-        # For now, create a structured response based on retrieved documents
-        # In a full implementation, this would call an LLM with the context
+        try:
+            # Create system message for agricultural context
+            system_message = self._create_system_message(response_type, language)
 
+            # Create user prompt with context and query
+            user_prompt = self._create_user_prompt(
+                query, context, response_type, language
+            )
+
+            # Call LLM service to generate response
+            llm_response = await llm_service.generate_response(
+                prompt=user_prompt,
+                system_message=system_message,
+                max_tokens=self._get_max_tokens_for_response_type(response_type),
+                temperature=0.3,  # Lower temperature for more factual responses
+                metadata={
+                    "query": query,
+                    "response_type": response_type,
+                    "language": language,
+                    "num_sources": len(retrieved_documents),
+                },
+            )
+
+            # Collect sources information
+            sources = []
+            for i, doc in enumerate(retrieved_documents):
+                metadata = doc.get("metadata", {})
+                source_info = {
+                    "id": doc.get("id", f"doc_{i}"),
+                    "source": metadata.get("source", "Unknown"),
+                    "category": metadata.get("category", "General"),
+                    "similarity_score": doc.get("similarity_score", 0),
+                    "collection": metadata.get("collection", "Unknown"),
+                }
+                sources.append(source_info)
+
+            return {
+                "response": llm_response.content,
+                "sources": sources,
+                "context_used": context,
+                "query": query,
+                "response_type": response_type,
+                "language": language,
+                "generated_at": datetime.now().isoformat(),
+                "num_sources": len(sources),
+                "llm_metadata": {
+                    "provider": llm_response.provider,
+                    "model": llm_response.model,
+                    "tokens_used": llm_response.tokens_used,
+                    "response_time": llm_response.response_time,
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to generate LLM response: {e}")
+            # Fallback to simple response generation
+            return self._generate_simple_response_fallback(
+                query, retrieved_documents, response_type, language
+            )
+
+    def _create_system_message(self, response_type: str, language: str) -> str:
+        """Create system message for the LLM based on response type and language."""
+
+        base_instructions = {
+            "en": """You are an expert agricultural advisor for Indian farmers. Your role is to provide accurate, practical, and actionable agricultural advice based on the provided context documents.
+
+IMPORTANT GUIDELINES:
+1. ONLY use information from the provided context documents
+2. ALWAYS cite sources using [Source X] format when making claims
+3. If the context doesn't contain enough information, clearly state this limitation
+4. Provide specific, actionable advice with dosages, timing, and costs when available
+5. Focus on practical solutions that farmers can implement
+6. Include prevention strategies when discussing disease/pest management
+7. Mention local availability and approximate costs when provided in context""",
+        }
+
+        response_type_additions = {
+            "comprehensive": "Provide detailed, comprehensive responses with all relevant information.",
+            "concise": "Provide concise, to-the-point responses focusing on key actionable items.",
+            "technical": "Provide technical responses with scientific details and precise measurements.",
+        }
+
+        system_msg = base_instructions.get(language, base_instructions["en"])
+
+        if response_type in response_type_additions:
+            system_msg += (
+                f"\n\nResponse Style: {response_type_additions[response_type]}"
+            )
+
+        return system_msg
+
+    def _create_user_prompt(
+        self, query: str, context: str, response_type: str, language: str
+    ) -> str:
+        """Create user prompt with context and query."""
+
+        prompt_templates = {
+            "en": """Based on the following agricultural knowledge context, please answer the farmer's question.
+
+CONTEXT DOCUMENTS:
+{context}
+
+FARMER'S QUESTION: {query}
+
+Please provide a helpful response based ONLY on the information in the context documents above. Always cite your sources using [Source X] format.""",
+        }
+
+        template = prompt_templates.get(language, prompt_templates["en"])
+        return template.format(context=context, query=query)
+
+    def _get_max_tokens_for_response_type(self, response_type: str) -> int:
+        """Get appropriate max tokens based on response type."""
+        token_limits = {"concise": 300, "comprehensive": 800, "technical": 600}
+        return token_limits.get(response_type, 500)
+
+    def _generate_simple_response_fallback(
+        self,
+        query: str,
+        retrieved_documents: List[Dict[str, Any]],
+        response_type: str,
+        language: str,
+    ) -> Dict[str, Any]:
+        """Fallback response generation when LLM fails."""
+
+        # This is the old logic as fallback
         response_parts = []
         sources = []
 
@@ -236,12 +359,13 @@ class RAGEngine:
         return {
             "response": response_text,
             "sources": sources,
-            "context_used": context,
+            "context_used": "",
             "query": query,
             "response_type": response_type,
             "language": language,
             "generated_at": datetime.now().isoformat(),
             "num_sources": len(sources),
+            "fallback_used": True,
         }
 
     def _generate_disease_response(self, documents: List[Dict[str, Any]]) -> str:
@@ -555,7 +679,7 @@ class RAGEngine:
             logger.error(f"Failed to get knowledge base stats: {e}")
             return {"error": str(e), "last_updated": datetime.now().isoformat()}
 
-    def search_and_generate(
+    async def search_and_generate(
         self,
         query: str,
         collections: Optional[List[str]] = None,
@@ -584,8 +708,8 @@ class RAGEngine:
                 query=query, collections=collections, top_k=top_k, filters=filters
             )
 
-            # Step 2: Generate grounded response
-            response_data = self.generate_grounded_response(
+            # Step 2: Generate grounded response using LLM
+            response_data = await self.generate_grounded_response(
                 query=query,
                 retrieved_documents=retrieved_docs,
                 response_type=response_type,

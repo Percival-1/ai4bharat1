@@ -2,6 +2,7 @@
 FastAPI application entry point for the AI-Driven Agri-Civic Intelligence Platform.
 """
 
+import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -94,10 +95,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # TODO: Initialize external API clients
     # TODO: Load ML models and vector databases
 
+    # Start background scheduler
+    from app.services.scheduler import scheduler
+
+    scheduler_task = asyncio.create_task(scheduler.start())
+
     yield
 
     # Shutdown
     logger.info("🛑 Shutting down AI-Driven Agri-Civic Intelligence Platform")
+
+    # Stop background scheduler
+    await scheduler.stop()
+    scheduler_task.cancel()
+    try:
+        await scheduler_task
+    except asyncio.CancelledError:
+        pass
 
     # TODO: Close database connections
     # TODO: Close Redis connections
@@ -197,6 +211,11 @@ app.include_router(llm.router, prefix="/api/v1", tags=["llm"])
 from app.api import translation
 
 app.include_router(translation.router, prefix="/api/v1", tags=["translation"])
+
+# Import and include Session router
+from app.api import session
+
+app.include_router(session.router, prefix="/api/v1", tags=["session"])
 
 
 # Root endpoint

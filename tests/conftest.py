@@ -17,7 +17,43 @@ from app.config import get_settings
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 # Handle UUID type for SQLite
-sqlite.base.ischema_names["UUID"] = String
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import TypeDecorator, String as SQLString
+
+
+class SQLiteUUID(TypeDecorator):
+    """Platform-independent UUID type for SQLite."""
+
+    impl = SQLString
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "sqlite":
+            return dialect.type_descriptor(SQLString(36))
+        else:
+            return dialect.type_descriptor(UUID())
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == "sqlite":
+            return str(value)
+        else:
+            return value
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        elif dialect.name == "sqlite":
+            import uuid
+
+            return uuid.UUID(value)
+        else:
+            return value
+
+
+# Register the UUID type for SQLite
+sqlite.base.ischema_names["UUID"] = SQLiteUUID
 
 
 @pytest.fixture(scope="session")

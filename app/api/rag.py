@@ -93,7 +93,7 @@ async def retrieve_documents(request: DocumentRetrievalRequest):
 async def rag_query(request: RAGQueryRequest):
     """Perform complete RAG pipeline: retrieve documents and generate response."""
     try:
-        response_data = rag_engine.search_and_generate(
+        response_data = await rag_engine.search_and_generate(
             query=request.query,
             collections=request.collections,
             top_k=request.top_k,
